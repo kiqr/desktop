@@ -10,7 +10,7 @@ describe('startPollLoop', () => {
     const exec: Exec = async (cmd) => {
       if (cmd.includes('network inspect')) return '';
       if (cmd.includes('docker ps'))
-        return 'kiqr-traefik\trunning\nkiqr-splash\trunning\n';
+        return 'kiqr-traefik\trunning\nkiqr-splash\trunning\nkiqr-mailpit\trunning\n';
       return JSON.stringify({
         Name: 'kiqr-traefik',
         CPUPerc: '1%',
@@ -21,12 +21,17 @@ describe('startPollLoop', () => {
 
     const onStatus = vi.fn();
     const onStats = vi.fn();
-    const loop = startPollLoop({onStatus, onStats}, {exec, intervalMs: 2000});
+    const onSites = vi.fn();
+    const loop = startPollLoop(
+      {onStatus, onStats, onSites},
+      {exec, intervalMs: 2000, getSitesFn: async () => []},
+    );
 
     // The loop fires one tick immediately, before the interval elapses.
     await vi.advanceTimersByTimeAsync(0);
     expect(onStatus).toHaveBeenCalledTimes(1);
     expect(onStats).toHaveBeenCalledTimes(1);
+    expect(onSites).toHaveBeenCalledTimes(1);
     expect(onStatus.mock.calls[0]?.[0].kind).toBe('running');
 
     // And again on the next interval.
@@ -40,7 +45,11 @@ describe('startPollLoop', () => {
     const exec: Exec = async () => '';
     const onStatus = vi.fn();
     const onStats = vi.fn();
-    const loop = startPollLoop({onStatus, onStats}, {exec, intervalMs: 2000});
+    const onSites = vi.fn();
+    const loop = startPollLoop(
+      {onStatus, onStats, onSites},
+      {exec, intervalMs: 2000, getSitesFn: async () => []},
+    );
 
     await vi.runOnlyPendingTimersAsync();
     const callsAfterFirst = onStatus.mock.calls.length;

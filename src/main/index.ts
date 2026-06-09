@@ -1,8 +1,16 @@
 import {join} from 'node:path';
 import {electronApp, is, optimizer} from '@electron-toolkit/utils';
 import {app, BrowserWindow, ipcMain, shell} from 'electron';
+import {
+  agentAction,
+  type ComposeAction,
+  restartSite,
+  startSite,
+  stopSite,
+} from './actions';
 import {IPC} from './ipc';
 import {startPollLoop} from './poller';
+import {agentComposePath, discoverProjects} from './projects';
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -54,9 +62,35 @@ app.whenReady().then(() => {
   const loop = startPollLoop({
     onStatus: (status) => send(IPC.status, status),
     onStats: (stats) => send(IPC.stats, stats),
+    onSites: (sites) => send(IPC.sites, sites),
   });
 
   ipcMain.on(IPC.refresh, () => loop.refresh());
+
+  // Site lifecycle: start / stop / restart a single site by id.
+  ipcMain.handle(
+    IPC.siteAction,
+    async (_event, payload: {id: string; action: ComposeAction}) => {
+      const projects = await discoverProjects();
+      const project = projects.find((p) => p.id === payload.id);
+      if (!project) throw new Error('Unknown site');
+      if (payload.action === 'up') await startSite(project.composePath);
+      else if (payload.action === 'down') await stopSite(project.composePath);
+      else await restartSite(project.composePath);
+      loop.refresh();
+    },
+  );
+
+  // Agent lifecycle: start / stop / restart the shared proxy + splash + mail.
+  ipcMain.handle(IPC.agentAction, async (_event, payload: {action: ComposeAction}) => {
+    await agentAction(agentComposePath(), payload.action);
+    loop.refresh();
+  });
+
+  // Open a site / inbox URL in the user's default browser.
+  ipcMain.handle(IPC.openUrl, async (_event, payload: {url: string}) => {
+    await shell.openExternal(payload.url);
+  });
 
   app.on('will-quit', () => loop.stop());
 

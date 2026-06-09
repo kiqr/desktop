@@ -1,9 +1,9 @@
 # KIQR Desktop
 
 A native desktop companion for the [Kiqr CLI](https://github.com/kiqr/cli). It
-watches your local **kiqr agent** and every WordPress dev environment it
-proxies, and shows their live status and resource usage in one calm, dark
-dashboard — so you always know what Docker is doing on your behalf.
+lists every local WordPress site by **name and domain**, shows each one's
+services at a glance, and lets you **start, stop, restart and open** them — and
+the shared **kiqr agent** — without touching the terminal.
 
 > Kiqr runs WordPress, MariaDB, and phpMyAdmin in Docker, with a shared
 > background **agent** (Traefik + a splash page) proxying every project. Kiqr
@@ -13,18 +13,21 @@ dashboard — so you always know what Docker is doing on your behalf.
 
 <!-- Screenshot placeholder — drop a real capture at docs/screenshot.png. -->
 
-## What it shows
+## What it does
 
-- **Agent status pill** — green and pulsing when the agent is up, grey when it's
-  stopped, amber when Docker itself isn't running.
-- **Agent card** — the `kiqr-traefik` and `kiqr-splash` containers with live
-  CPU and memory meters and a rolling CPU sparkline.
-- **Projects** — a grouped card per running kiqr environment
-  (WordPress / MariaDB / phpMyAdmin) with the same animated meters.
-- **Intentional empty states** — when nothing's running, it tells you to
-  `kiqr up` instead of looking broken.
+- **Sites, by name** — one card per local site showing its friendly name
+  (`Middagskassen`), its domain (`middagskassen.lvh.me`, click to open), and a
+  status badge per dependency (WordPress · Database · phpMyAdmin). No UUIDs.
+- **Manage each site** — **Start**, **Stop**, **Restart** and **Open** buttons
+  per site, driven straight through `docker compose`.
+- **The kiqr agent** — a strip for the shared services (Proxy · Splash ·
+  **Mail**) with the same controls and a one-click **Open mail inbox**
+  (`mail.lvh.me:5477`, powered by Mailpit).
+- **Plain language** — "Running" / "Stopped" / "Docker not running", never raw
+  container ids. Empty state nudges you to `kiqr up` instead of looking broken.
 
-Everything refreshes every ~2 seconds with smooth transitions.
+Names and domains are read from each site's generated compose + `kiqr.yaml`;
+live status refreshes every ~2 seconds.
 
 ## Prerequisites
 
@@ -63,9 +66,9 @@ once you're ready to ship installers — not wired into CI).
 All Docker access lives in the main process (`src/main/docker.ts`) and is
 deliberately boring and testable:
 
-- `getAgentStatus()` shells out to
-  `docker ps --filter name=kiqr-traefik --filter name=kiqr-splash` to decide
-  whether the agent is up.
+- `getAgentStatus()` shells out to `docker ps` filtered to the agent containers
+  (`kiqr-traefik`, `kiqr-splash`, `kiqr-mailpit`) to decide whether the agent is
+  up.
 - `getContainerStats()` runs `docker stats --no-stream --format '{{json .}}'`,
   parses each line, and keeps only kiqr-related containers (name prefixed
   `kiqr-`, or attached to the `kiqr` Docker network).
@@ -77,8 +80,16 @@ The string-parsing is split into pure functions (`parseAgentPs`,
 logic is unit-tested **without** a Docker daemon. If Docker isn't installed or
 the daemon is down, the service returns a clear status instead of crashing.
 
+Sites are discovered from the CLI's data dir: `src/main/projects.ts` reads each
+`projects/<id>/compose.yaml` (for the domain, theme path and services) plus the
+project's `kiqr.yaml` (for the friendly name) — all in pure, tested functions.
+Lifecycle actions live in `src/main/actions.ts` as pure `docker` argv builders
+(`docker compose -f <file> up -d|down|restart`), spawned with `execFile` (an
+argv array, never a shell string).
+
 The renderer never touches Node or Docker directly. The preload exposes a
-single sandboxed `window.kiqr` API (`onStatus`, `onStats`, `refresh`) via
+single sandboxed `window.kiqr` API — `onStatus` / `onStats` / `onSites`,
+`refresh`, and the actions `siteAction` / `agentAction` / `openUrl` — via
 `contextBridge`, with `contextIsolation` on and `nodeIntegration` off.
 
 ## Architecture
@@ -87,19 +98,21 @@ single sandboxed `window.kiqr` API (`onStatus`, `onStats`, `refresh`) via
 src/
   main/        Electron main process
     docker.ts    pure parsers + injectable exec wrapper (tested)
-    poller.ts    2s poll loop -> IPC
+    projects.ts  site discovery + compose/kiqr.yaml parsing + status mapping
+    actions.ts   pure docker argv builders for start/stop/restart
+    poller.ts    2s poll loop -> IPC (status, stats, sites)
     ipc.ts       shared channel names
     types.ts     shared payload types
-    index.ts     window + lifecycle
+    index.ts     window, lifecycle + action handlers
   preload/     contextBridge -> window.kiqr
-  renderer/    React + TypeScript dashboard
-tests/         Vitest specs for the parsers (no Docker needed)
+  renderer/    React + TypeScript dashboard (Sites + agent strip)
+tests/         Vitest specs (parsers, discovery, actions — no Docker needed)
 ```
 
 ## Pairs with `@kiqr/cli`
 
-Kiqr Desktop is read-only today — it observes what the CLI orchestrates. Use
-the CLI to drive your environments:
+The CLI creates and configures your environments; Kiqr Desktop lists, monitors
+and controls them. Create your first site with the CLI:
 
 ```bash
 npm install -g @kiqr/cli
@@ -107,7 +120,7 @@ cd your-theme-directory
 kiqr up
 ```
 
-…then keep Kiqr Desktop open to watch it all hum.
+…then drive everything from Kiqr Desktop.
 
 ## License
 

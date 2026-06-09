@@ -11,10 +11,10 @@ import {
 } from '../src/main/docker';
 
 describe('parseAgentPs', () => {
-  it('reports both containers running', () => {
-    const out = 'kiqr-traefik\trunning\nkiqr-splash\trunning\n';
+  it('reports all agent containers running', () => {
+    const out = 'kiqr-traefik\trunning\nkiqr-splash\trunning\nkiqr-mailpit\trunning\n';
     const result = parseAgentPs(out);
-    expect(result).toHaveLength(2);
+    expect(result).toHaveLength(3);
     expect(result.every((c) => c.running)).toBe(true);
   });
 
@@ -29,7 +29,7 @@ describe('parseAgentPs', () => {
 
   it('reports none running on empty output', () => {
     const result = parseAgentPs('');
-    expect(result).toHaveLength(2);
+    expect(result).toHaveLength(3);
     expect(result.some((c) => c.running)).toBe(false);
   });
 
@@ -39,7 +39,8 @@ describe('parseAgentPs', () => {
   });
 
   it('tolerates blank lines and stray whitespace', () => {
-    const out = '\n  kiqr-traefik\trunning  \n\n kiqr-splash\trunning\n';
+    const out =
+      '\n  kiqr-traefik\trunning  \n\n kiqr-splash\trunning\n kiqr-mailpit\trunning\n';
     const result = parseAgentPs(out);
     expect(result.every((c) => c.running)).toBe(true);
   });
@@ -154,8 +155,9 @@ describe('parseNetworkMembers', () => {
 });
 
 describe('getAgentStatus (mocked exec)', () => {
-  it('returns running when both containers are up', async () => {
-    const exec: Exec = async () => 'kiqr-traefik\trunning\nkiqr-splash\trunning\n';
+  it('returns running when all containers are up', async () => {
+    const exec: Exec = async () =>
+      'kiqr-traefik\trunning\nkiqr-splash\trunning\nkiqr-mailpit\trunning\n';
     const status = await getAgentStatus(exec);
     expect(status.kind).toBe('running');
     expect(status.running).toBe(true);

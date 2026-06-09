@@ -1,11 +1,14 @@
 import {exec} from 'node:child_process';
 import {promisify} from 'node:util';
+import {discoverProjects, mapSiteStatuses} from './projects';
 import type {
   AgentContainer,
   AgentStatus,
   ClassifiedStat,
   ContainerRole,
   ContainerStat,
+  ProjectMeta,
+  SiteStatus,
 } from './types';
 
 /**
@@ -22,7 +25,7 @@ import type {
  */
 
 /** The containers that together make up the kiqr agent. */
-export const AGENT_CONTAINERS = ['kiqr-traefik', 'kiqr-splash'] as const;
+export const AGENT_CONTAINERS = ['kiqr-traefik', 'kiqr-splash', 'kiqr-mailpit'] as const;
 
 /** The Docker network every kiqr container joins. */
 export const KIQR_NETWORK = 'kiqr';
@@ -151,6 +154,7 @@ function deriveService(name: string): {service: string; project: string | null} 
 
   if (lower === 'kiqr-traefik') return {service: 'traefik', project: null};
   if (lower === 'kiqr-splash') return {service: 'splash', project: null};
+  if (lower === 'kiqr-mailpit') return {service: 'mail', project: null};
 
   const services = ['phpmyadmin', 'wordpress', 'mariadb', 'mysql', 'redis'];
   for (const service of services) {
@@ -208,6 +212,7 @@ export function parseNetworkMembers(stdout: string): Set<string> {
 export async function getAgentStatus(exec: Exec = defaultExec): Promise<AgentStatus> {
   const cmd =
     'docker ps --filter name=kiqr-traefik --filter name=kiqr-splash ' +
+    '--filter name=kiqr-mailpit ' +
     "--format '{{.Names}}\t{{.State}}'";
 
   try {
@@ -282,5 +287,37 @@ export async function getContainerStats(
       .filter((stat) => stat.role !== 'other');
   } catch {
     return [];
+  }
+}
+
+/** Parse running container names from `docker ps --format '{{.Names}}'`. */
+export function parseRunningNames(stdout: string): string[] {
+  const names: string[] = [];
+  for (const raw of stdout.split('\n')) {
+    const name = raw.trim();
+    if (name) names.push(name);
+  }
+  return names;
+}
+
+/**
+ * Discover local sites and attach their live Docker status. Never throws: if
+ * Docker is unavailable the sites are still listed, all marked stopped.
+ */
+export async function getSites(
+  exec: Exec = defaultExec,
+  discover: () => Promise<ProjectMeta[]> = discoverProjects,
+): Promise<SiteStatus[]> {
+  const projects = await discover();
+  if (projects.length === 0) return [];
+  try {
+    const [runningOut, stats] = await Promise.all([
+      exec("docker ps --format '{{.Names}}'"),
+      getContainerStats(exec),
+    ]);
+    const running = new Set(parseRunningNames(runningOut));
+    return mapSiteStatuses(projects, running, stats);
+  } catch {
+    return mapSiteStatuses(projects, new Set(), []);
   }
 }

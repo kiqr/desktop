@@ -50,3 +50,51 @@ export interface ClassifiedStat extends ContainerStat {
   /** Project slug derived from the container name, when detectable. */
   project: string | null;
 }
+
+/** The kiqr-managed services a site runs (wpcli is hidden from the UI). */
+export type ProjectServiceKey = 'wordpress' | 'mariadb' | 'phpmyadmin';
+
+/** A discovered local site, before its live (Docker) status is attached. */
+export interface ProjectMeta {
+  /** The project id (its data-dir folder name); never shown to the user. */
+  id: string;
+  /** URL slug, e.g. `middagskassen`. */
+  slug: string;
+  /** Friendly display name, e.g. `Middagskassen`. */
+  name: string;
+  /** The site's local domain, e.g. `middagskassen.lvh.me`. */
+  domain: string;
+  /** Absolute path to the theme repo, when known. */
+  themePath: string | null;
+  /** Absolute path to the generated compose file (used to start/stop the site). */
+  composePath: string;
+  /** Which services this site defines. */
+  services: ProjectServiceKey[];
+}
+
+/** Live status of one of a site's services, ready for a status badge. */
+export interface ServiceStatus {
+  key: ProjectServiceKey;
+  /** Friendly label, e.g. `WordPress`, `Database`, `phpMyAdmin`. */
+  label: string;
+  running: boolean;
+  /** CPU usage 0..1, when stats are available. */
+  cpu?: number;
+  /** Memory usage 0..1, when stats are available. */
+  mem?: number;
+  /** Raw memory usage string, e.g. `128MiB / 512MiB`. */
+  memUsage?: string;
+}
+
+/** A site (project) with its live status — the primary unit of the new UI. */
+export interface SiteStatus {
+  id: string;
+  name: string;
+  domain: string;
+  /** Browser URL for the site (`http://<domain>:5477`). */
+  url: string;
+  composePath: string;
+  /** True when the site's WordPress container is running. */
+  running: boolean;
+  services: ServiceStatus[];
+}
