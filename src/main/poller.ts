@@ -1,14 +1,23 @@
-import {defaultExec, type Exec, getAgentStatus, getContainerStats} from './docker';
-import type {AgentStatus, ClassifiedStat} from './types';
+import {
+  defaultExec,
+  type Exec,
+  getAgentStatus,
+  getContainerStats,
+  getSites,
+} from './docker';
+import type {AgentStatus, ClassifiedStat, SiteStatus} from './types';
 
 export interface PollHandlers {
   onStatus: (status: AgentStatus) => void;
   onStats: (stats: ClassifiedStat[]) => void;
+  onSites: (sites: SiteStatus[]) => void;
 }
 
 export interface PollOptions {
   intervalMs?: number;
   exec?: Exec;
+  /** Overridable site fetcher (lets tests avoid real filesystem discovery). */
+  getSitesFn?: (exec: Exec) => Promise<SiteStatus[]>;
 }
 
 /**
@@ -22,7 +31,7 @@ export interface PollOptions {
  */
 export function startPollLoop(
   handlers: PollHandlers,
-  {intervalMs = 2000, exec = defaultExec}: PollOptions = {},
+  {intervalMs = 2000, exec = defaultExec, getSitesFn = getSites}: PollOptions = {},
 ) {
   let timer: ReturnType<typeof setInterval> | null = null;
   let inFlight = false;
@@ -32,13 +41,15 @@ export function startPollLoop(
     if (inFlight || stopped) return;
     inFlight = true;
     try {
-      const [status, stats] = await Promise.all([
+      const [status, stats, sites] = await Promise.all([
         getAgentStatus(exec),
         getContainerStats(exec),
+        getSitesFn(exec),
       ]);
       if (stopped) return;
       handlers.onStatus(status);
       handlers.onStats(stats);
+      handlers.onSites(sites);
     } finally {
       inFlight = false;
     }
